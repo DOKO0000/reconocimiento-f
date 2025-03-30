@@ -1,110 +1,84 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reconocimiento Facial</title>
-    <style>
-        body {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            margin: 20px;
-        }
-        .container {
-            display: flex;
-            gap: 20px;
-        }
-        video, canvas {
-            width: 400px;
-            height: 300px;
-            border: 2px solid #333;
-        }
-        #result {
-            margin-top: 20px;
-            font-size: 20px;
-        }
-        button {
-            margin-top: 10px;
-            padding: 10px 20px;
-            cursor: pointer;
-        }
-    </style>
-</head>
-<body>
-    <h1>Prueba de Reconocimiento Facial</h1>
-    <div class="container">
-        <video id="webcam" autoplay playsinline></video>
-        <canvas id="referenceCanvas"></canvas>
-    </div>
-    <input type="file" id="fileInput" accept="image/*">
-    <button id="startCamera">Iniciar Cámara</button>
-    <div id="result"></div>
+import face_recognition
+import cv2
+import os
 
-    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
-    <script>
-        const video = document.getElementById('webcam');
-        const referenceCanvas = document.getElementById('referenceCanvas');
-        const fileInput = document.getElementById('fileInput');
-        const resultDiv = document.getElementById('result');
-        let referenceDescriptor;
+# Cargar imágenes y codificar rostros
+known_face_encodings = []
+known_face_names = []
 
-        // Cargar modelos de face-api.js
-        async function loadModels() {
-            await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
-            await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
-            await faceapi.nets.faceRecognitionNet.loadFromUri('/models');
-        }
+# Obtener la ruta absoluta del directorio actual
+current_directory = os.path.dirname(os.path.abspath(__file__))
 
-        // Cargar imagen de referencia
-        fileInput.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            const img = await faceapi.bufferToImage(file);
-            referenceCanvas.getContext('2d').drawImage(img, 0, 0, 400, 300);
-            
-            const detection = await faceapi
-                .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
-                .withFaceLandmarks()
-                .withFaceDescriptor();
-            
-            if (detection) {
-                referenceDescriptor = detection.descriptor;
-                resultDiv.textContent = "Imagen de referencia cargada. Inicia la cámara.";
-            } else {
-                resultDiv.textContent = "No se detectó un rostro en la imagen de referencia.";
-            }
-        });
+# Función para cargar imágenes y codificar rostros
+def load_images_and_encode(directory):
+    for filename in os.listdir(directory):
+        if filename.endswith((".jpg", ".jpeg", ".png")):
+            image_path = os.path.join(directory, filename)
+            image = face_recognition.load_image_file(image_path)
+            face_encoding = face_recognition.face_encodings(image)
+            if len(face_encoding) > 0:
+                known_face_encodings.append(face_encoding[0])
+                known_face_names.append(os.path.splitext(filename)[0])
+            else:
+                print(f"Advertencia: No se detectó ningún rostro en {filename}")
 
-        // Iniciar cámara
-        document.getElementById('startCamera').addEventListener('click', async () => {
-            const stream = await navigator.mediaDevices.getUser Media({ video: {} });
-            video.srcObject = stream;
+# Cargar imágenes desde el directorio "imagenes"
+imagenes_directory = os.path.join(current_directory, "imagenes")
+load_images_and_encode(imagenes_directory)
 
-            // Comparar en tiempo real
-            setInterval(async () => {
-                if (!referenceDescriptor) return;
+# Inicializar la cámara
+video_capture = cv2.VideoCapture(0)
 
-                const detection = await faceapi
-                    .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
-                    .withFaceLandmarks()
-                    .withFaceDescriptor();
+if not video_capture.isOpened():
+    print("Error: No se pudo abrir la cámara.")
+    exit()
 
-                if (detection) {
-                    const distance = faceapi.euclideanDistance(referenceDescriptor, detection.descriptor);
-                    const similarity = Math.round((1 - distance) * 100);
-                    resultDiv.textContent = `Similitud: ${similarity}%`;
+# Bucle principal
+while True:
+    ret, frame = video_capture.read()
 
-                    if (distance < 0.6) {
-                        resultDiv.textContent += " - ✅ Coincidencia verificada";
-                    } else {
-                        resultDiv.textContent += " - ❌ No coincide";
-                    }
-                }
-            }, 1000);
-        });
+    if not ret:
+        print("Error: No se pudo obtener el frame.")
+        break
 
-        // Cargar modelos al inicio
-        loadModels();
-    </script>
-</body>
-</html>
+    # Redimensionar el frame para mejorar el rendimiento
+    small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
+    rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
+
+    # Encontrar rostros y codificarlos
+    face_locations = face_recognition.face_locations(rgb_small_frame)
+    face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
+
+    face_names = []
+    for face_encoding in face_encodings:
+        # Comparar rostros
+        matches = face_recognition.compare_faces(known_face_encodings, face_encoding)
+        name = "Desconocido"
+
+        # Encontrar la mejor coincidencia
+        if True in matches:
+            first_match_index = matches.index(True)
+            name = known_face_names[first_match_index]
+
+        face_names.append(name)
+
+    # Mostrar resultados
+    for (top, right, bottom, left), name in zip(face_locations, face_names):
+        top *= 4
+        right *= 4
+        bottom *= 4
+        left *= 4
+
+        cv2.rectangle(frame, (left, top), (right, bottom), (0, 0, 255), 2)
+        cv2.putText(frame, name, (left + 6, bottom - 6), cv2.FONT_HERSHEY_DUPLEX, 0.8, (255, 255, 255), 1)
+
+    # Mostrar el frame resultante
+    cv2.imshow('Video', frame)
+
+    # Salir del bucle si se presiona 'q'
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+# Liberar recursos
+video_capture.release()
+cv2.destroyAllWindows()
