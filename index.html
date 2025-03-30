@@ -1,6 +1,7 @@
 import face_recognition
 import cv2
 import os
+from google.colab.patches import cv2_imshow #Importamos cv2_imshow
 
 # Cargar imágenes y codificar rostros
 known_face_encodings = []
@@ -73,12 +74,15 @@ while True:
         cv2.putText(frame, name, (left + 6, bottom - 6), cv2.FONT_HERSHEY_DUPLEX, 0.8, (255, 255, 255), 1)
 
     # Mostrar el frame resultante
-    cv2.imshow('Video', frame)
+    cv2_imshow(frame) # Utilizamos cv2_imshow en vez de cv2.imshow
 
     # Salir del bucle si se presiona 'q'
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
+# Liberar recursos
+video_capture.release()
+cv2.destroyAllWindows()
 # Liberar recursos
 video_capture.release()
 cv2.destroyAllWindows()
