@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verificación de Rostros</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 20px;
+        }
+        .container {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        #uploaded-image, #video {
+            width: 320px;
+            height: 240px;
+            border: 2px solid #ccc;
+            border-radius: 10px;
+        }
+        #canvas {
+            display: none;
+        }
+        #result {
+            margin-top: 20px;
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+        #upload-label {
+            display: block;
+            margin: 20px auto;
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #upload {
+            display: none;
+        }
+        #capture {
+            padding: 10px 20px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #capture:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        #permission-message {
+            margin-top: 20px;
+            color: #dc3545;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>Verificación de Rostros</h1>
+    <label for="upload" id="upload-label">Sube una foto de tu rostro</label>
+    <input type="file" id="upload" accept="image/*">
+    <div id="permission-message">Esperando permiso para acceder a la cámara...</div>
+    <div class="container">
+        <img id="uploaded-image" src="#" alt="Imagen subida" style="display: none;">
+        <video id="video" width="320" height="240" autoplay style="display: none;"></video>
+    </div>
+    <br>
+    <button id="capture" disabled>Verificar Similitud</button>
+    <canvas id="canvas" width="320" height="240"></canvas>
+    <div id="result"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
+    <script>
+        const video = document.getElementById('video');
+        const upload = document.getElementById('upload');
+        const uploadLabel = document.getElementById('upload-label');
+        const uploadedImageElement = document.getElementById('uploaded-image');
+        const captureButton = document.getElementById('capture');
+        const canvas = document.getElementById('canvas');
+        const resultDiv = document.getElementById('result');
+        const permissionMessage = document.getElementById('permission-message');
+
+        let uploadedImage = null;
+
+        // Cargar los modelos de face-api.js
+        async function loadModels() {
+            await faceapi.nets.tinyFaceDetector.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
+            await faceapi.nets.faceLandmark68Net.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
+            await faceapi.nets.faceRecognitionNet.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
+        }
+
+        // Iniciar la cámara
+        async function startVideo() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
+                video.srcObject = stream;
+                video.style.display = 'block'; // Mostrar el video
+                permissionMessage.style.display = 'none'; // Ocultar el mensaje de permiso
+                captureButton.disabled = false; // Habilitar el botón de captura
+            } catch
