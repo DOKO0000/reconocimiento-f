@@ -68,6 +68,11 @@
             border: 2px solid #ccc;
             border-radius: 10px;
         }
+        #canvas {
+            border: 2px solid #ccc;
+            border-radius: 10px;
+            margin-top: 10px;
+        }
         #login-result {
             margin-top: 10px;
             font-size: 1.2em;
@@ -80,7 +85,7 @@
         <h1>Verificación de Matrícula</h1>
         <input type="text" id="matricula" placeholder="Ingresa tu matrícula">
         <button onclick="verificarMatricula()">Verificar</button>
-        <p class="error" id="error-message"></p>
+        <p class="error, id="error-message"></p>
         <div class="loading" id="loading">Cargando...</div>
     </div>
 
@@ -97,7 +102,7 @@
         <h2>Login de Rostro</h2>
         <video id="video" width="320" height="240" autoplay></video>
         <button id="capture-face">Capturar Rostro</button>
-        <canvas id="canvas" style="display: none;"></canvas>
+        <canvas id="canvas" width="320" height="240" style="display: none;"></canvas>
         <div id="login-result"></div>
     </div>
 
@@ -111,8 +116,10 @@
         const canvas = document.getElementById('canvas');
         const loginResult = document.getElementById('login-result');
         const faceLoginSection = document.getElementById('face-login');
+        const foto = document.getElementById('foto');
 
-        let faceDescriptor = null;
+        let faceDescriptorFromImage = null; // Descriptor facial de la imagen de la matrícula
+        let faceDescriptorFromVideo = null; // Descriptor facial del video en tiempo real
 
         // Cargar modelos de face-api.js
         async function loadModels() {
@@ -132,61 +139,63 @@
             }
         }
 
-        // Capturar y almacenar rostro
-        captureFaceButton.addEventListener('click', async () => {
-            const displaySize = { width: video.width, height: video.height };
-            faceapi.matchDimensions(canvas, displaySize);
+        // Obtener descriptor facial de una imagen
+        async function getFaceDescriptorFromImage(imageElement) {
+            const detections = await faceapi.detectAllFaces(imageElement, new faceapi.TinyFaceDetectorOptions())
+                .withFaceLandmarks()
+                .withFaceDescriptors();
+            if (detections.length > 0) {
+                return detections[0].descriptor;
+            } else {
+                return null;
+            }
+        }
 
+        // Obtener descriptor facial del video en tiempo real
+        async function getFaceDescriptorFromVideo() {
             const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
                 .withFaceLandmarks()
                 .withFaceDescriptors();
-
             if (detections.length > 0) {
-                faceDescriptor = detections[0].descriptor;
-                loginResult.textContent = "Rostro capturado correctamente.";
-                // Guardar el descriptor facial en la base de datos
-                guardarDescriptorFacial(faceDescriptor);
+                return detections[0].descriptor;
+            } else {
+                return null;
+            }
+        }
+
+        // Comparar descriptores faciales
+        function compareFaceDescriptors(descriptor1, descriptor2) {
+            const distance = faceapi.euclideanDistance(descriptor1, descriptor2);
+            return distance < 0.6; // Umbral de similitud (ajustable)
+        }
+
+        // Capturar y comparar rostro
+        captureFaceButton.addEventListener('click', async () => {
+            // Capturar el frame actual del video y mostrarlo en el canvas
+            const context = canvas.getContext('2d');
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            canvas.style.display = 'block'; // Mostrar el canvas
+
+            // Obtener el descriptor facial del video
+            faceDescriptorFromVideo = await getFaceDescriptorFromVideo();
+            if (faceDescriptorFromVideo && faceDescriptorFromImage) {
+                const isMatch = compareFaceDescriptors(faceDescriptorFromImage, faceDescriptorFromVideo);
+                if (isMatch) {
+                    loginResult.textContent = "Rostro reconocido. Iniciando sesión...";
+                    // Redirigir o realizar acciones adicionales
+                } else {
+                    loginResult.textContent = "Rostro no coincide. Intenta nuevamente.";
+                }
             } else {
                 loginResult.textContent = "No se detectó ningún rostro. Intenta nuevamente.";
             }
         });
-
-        // Guardar descriptor facial en Firebase
-        function guardarDescriptorFacial(descriptor) {
-            const matricula = document.getElementById('matricula').value;
-            const data = {
-                matricula: matricula,
-                descriptor: JSON.stringify(descriptor) // Convertir a JSON para almacenar
-            };
-
-            fetch('https://fotocredencial-30d54-default-rtdb.firebaseio.com/rostros.json', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(data)
-            })
-            .then(response => {
-                if (response.ok) {
-                    console.log('Descriptor facial guardado en Firebase.');
-                    loginResult.textContent = "Descriptor facial guardado correctamente.";
-                } else {
-                    console.error('Error al guardar el descriptor facial:', response.statusText);
-                    loginResult.textContent = "Error al guardar el descriptor facial.";
-                }
-            })
-            .catch(error => {
-                console.error('Error en la conexión a Firebase:', error);
-                loginResult.textContent = "Error en la conexión a Firebase.";
-            });
-        }
 
         // Verificar matrícula
         async function verificarMatricula() {
             const matricula = document.getElementById('matricula').value;
             const errorMessage = document.getElementById('error-message');
             const imageContainer = document.getElementById('image-container');
-            const foto = document.getElementById('foto');
             const loading = document.getElementById('loading');
             errorMessage.textContent = '';
             imageContainer.style.display = 'none';
@@ -214,8 +223,6 @@
 
                 if (reconocimientoExitoso) {
                     imageContainer.style.display = 'block';
-                    // Mostrar la sección de login de rostro
-                    faceLoginSection.style.display = 'block';
                 } else {
                     errorMessage.textContent = 'Reconocimiento facial fallido. Por favor, intenta nuevamente.';
                 }
@@ -256,46 +263,20 @@
         }
 
         // Confirmar validación
-        function confirmar(esValido) {
+        async function confirmar(esValido) {
             if (esValido) {
-                const matricula = document.getElementById('matricula').value;
-                const link = `DOKO_PRUEBA.html?matricula=${matricula}`;
-                
-                // Enviar datos a Firebase
-                enviarADatabase(matricula, link);
-                
-                // Redirigir a la página DOKO con la matrícula como parámetro
-                window.location.href = link;
+                // Obtener el descriptor facial de la imagen de la matrícula
+                faceDescriptorFromImage = await getFaceDescriptorFromImage(foto);
+                if (faceDescriptorFromImage) {
+                    // Mostrar la sección de login de rostro
+                    faceLoginSection.style.display = 'block';
+                } else {
+                    alert("No se pudo detectar un rostro en la imagen. Intenta nuevamente.");
+                }
             } else {
                 // Reiniciar la página si la validación falla
                 window.location.reload();
             }
-        }
-
-        // Enviar datos a Firebase
-        function enviarADatabase(matricula, link) {
-            const data = {
-                matricula: matricula,
-                link: link
-            };
-
-            fetch('https://fotocredencial-30d54-default-rtdb.firebaseio.com/credenciales.json', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(data)
-            })
-            .then(response => {
-                if (response.ok) {
-                    console.log('Datos enviados a Firebase correctamente.');
-                } else {
-                    console.error('Error al enviar datos a Firebase:', response.statusText);
-                }
-            })
-            .catch(error => {
-                console.error('Error en la conexión a Firebase:', error);
-            });
         }
 
         // Iniciar
