@@ -226,4 +226,11 @@
             if (esValido) {
                 // Obtener el descriptor facial de la imagen de la matrícula
                 faceDescriptorFromImage = await getFaceDescriptorFromImage(foto);
-                if (faceDescriptorFromImage)
+                if (faceDescriptorFromImage) {
+                    // Mostrar la sección de login de rostro
+                    faceLoginSection.style.display = 'block';
+                } else {
+                    alert("No se pudo detectar un rostro en la imagen. Intenta nuevamente.");
+                }
+            } else {
+                // Rein
