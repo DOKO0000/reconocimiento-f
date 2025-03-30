@@ -3,105 +3,303 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Verificación de Rostros</title>
+    <title>Verificación de Matrícula y Login de Rostro</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            text-align: center;
-            margin: 20px;
-        }
-        .container {
             display: flex;
             justify-content: center;
-            gap: 20px;
+            align-items: center;
+            height: 100vh;
+            background-color: #f4f4f4;
+            flex-direction: column;
+        }
+        .container {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+        input[type="text"] {
+            padding: 10px;
+            margin: 10px 0;
+            width: 200px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .error {
+            color: red;
+            margin-top: 10px;
+        }
+        .image-container {
             margin-top: 20px;
         }
-        #uploaded-image, #video {
-            width: 320px;
-            height: 240px;
+        .image-container img {
+            max-width: 100%;
+            border-radius: 8px;
+        }
+        .confirmation {
+            margin-top: 10px;
+        }
+        .confirmation button {
+            margin: 5px;
+        }
+        .loading {
+            display: none;
+            margin-top: 10px;
+        }
+        #face-login {
+            display: none;
+            margin-top: 20px;
+        }
+        #video {
             border: 2px solid #ccc;
             border-radius: 10px;
         }
-        #canvas {
-            display: none;
-        }
-        #result {
-            margin-top: 20px;
-            font-size: 1.5em;
-            font-weight: bold;
-        }
-        #upload-label {
-            display: block;
-            margin: 20px auto;
-            padding: 10px 20px;
-            background-color: #007bff;
-            color: white;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        #upload {
-            display: none;
-        }
-        #capture {
-            padding: 10px 20px;
-            background-color: #28a745;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        #capture:disabled {
-            background-color: #6c757d;
-            cursor: not-allowed;
-        }
-        #permission-message {
-            margin-top: 20px;
-            color: #dc3545;
+        #login-result {
+            margin-top: 10px;
+            font-size: 1.2em;
             font-weight: bold;
         }
     </style>
 </head>
 <body>
-    <h1>Verificación de Rostros</h1>
-    <label for="upload" id="upload-label">Sube una foto de tu rostro</label>
-    <input type="file" id="upload" accept="image/*">
-    <div id="permission-message">Esperando permiso para acceder a la cámara...</div>
     <div class="container">
-        <img id="uploaded-image" src="#" alt="Imagen subida" style="display: none;">
-        <video id="video" width="320" height="240" autoplay style="display: none;"></video>
+        <h1>Verificación de Matrícula</h1>
+        <input type="text" id="matricula" placeholder="Ingresa tu matrícula">
+        <button onclick="verificarMatricula()">Verificar</button>
+        <p class="error" id="error-message"></p>
+        <div class="loading" id="loading">Cargando...</div>
     </div>
-    <br>
-    <button id="capture" disabled>Verificar Similitud</button>
-    <canvas id="canvas" width="320" height="240"></canvas>
-    <div id="result"></div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <div class="image-container" id="image-container" style="display: none;">
+        <img id="foto" alt="Foto de la matrícula">
+        <div class="confirmation">
+            <p>¿Esta persona eres tú?</p>
+            <button onclick="confirmar(true)">Sí</button>
+            <button onclick="confirmar(false)">No</button>
+        </div>
+    </div>
+
+    <div id="face-login">
+        <h2>Login de Rostro</h2>
+        <video id="video" width="320" height="240" autoplay></video>
+        <button id="capture-face">Capturar Rostro</button>
+        <canvas id="canvas" style="display: none;"></canvas>
+        <div id="login-result"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
     <script>
+        const faceApiKey = 'TU_CLAVE_DE_FACE_API'; // Reemplaza con tu clave de Face API
+        const faceApiEndpoint = 'TU_ENDPOINT_DE_FACE_API'; // Reemplaza con tu endpoint de Face API
         const video = document.getElementById('video');
-        const upload = document.getElementById('upload');
-        const uploadLabel = document.getElementById('upload-label');
-        const uploadedImageElement = document.getElementById('uploaded-image');
-        const captureButton = document.getElementById('capture');
+        const captureFaceButton = document.getElementById('capture-face');
         const canvas = document.getElementById('canvas');
-        const resultDiv = document.getElementById('result');
-        const permissionMessage = document.getElementById('permission-message');
+        const loginResult = document.getElementById('login-result');
+        const faceLoginSection = document.getElementById('face-login');
 
-        let uploadedImage = null;
+        let faceDescriptor = null;
 
-        // Cargar los modelos de face-api.js
+        // Cargar modelos de face-api.js
         async function loadModels() {
             await faceapi.nets.tinyFaceDetector.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
             await faceapi.nets.faceLandmark68Net.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
             await faceapi.nets.faceRecognitionNet.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
         }
 
-        // Iniciar la cámara
+        // Iniciar cámara
         async function startVideo() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
                 video.srcObject = stream;
-                video.style.display = 'block'; // Mostrar el video
-                permissionMessage.style.display = 'none'; // Ocultar el mensaje de permiso
-                captureButton.disabled = false; // Habilitar el botón de captura
-            } 
+                faceLoginSection.style.display = 'block'; // Mostrar la sección de login de rostro
+            } catch (err) {
+                console.error("Error al acceder a la cámara:", err);
+            }
+        }
+
+        // Capturar y almacenar rostro
+        captureFaceButton.addEventListener('click', async () => {
+            const displaySize = { width: video.width, height: video.height };
+            faceapi.matchDimensions(canvas, displaySize);
+
+            const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
+                .withFaceLandmarks()
+                .withFaceDescriptors();
+
+            if (detections.length > 0) {
+                faceDescriptor = detections[0].descriptor;
+                loginResult.textContent = "Rostro capturado correctamente.";
+                // Guardar el descriptor facial en la base de datos
+                guardarDescriptorFacial(faceDescriptor);
+            } else {
+                loginResult.textContent = "No se detectó ningún rostro. Intenta nuevamente.";
+            }
+        });
+
+        // Guardar descriptor facial en Firebase
+        function guardarDescriptorFacial(descriptor) {
+            const matricula = document.getElementById('matricula').value;
+            const data = {
+                matricula: matricula,
+                descriptor: JSON.stringify(descriptor) // Convertir a JSON para almacenar
+            };
+
+            fetch('https://fotocredencial-30d54-default-rtdb.firebaseio.com/rostros.json', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => {
+                if (response.ok) {
+                    console.log('Descriptor facial guardado en Firebase.');
+                    loginResult.textContent = "Descriptor facial guardado correctamente.";
+                } else {
+                    console.error('Error al guardar el descriptor facial:', response.statusText);
+                    loginResult.textContent = "Error al guardar el descriptor facial.";
+                }
+            })
+            .catch(error => {
+                console.error('Error en la conexión a Firebase:', error);
+                loginResult.textContent = "Error en la conexión a Firebase.";
+            });
+        }
+
+        // Verificar matrícula
+        async function verificarMatricula() {
+            const matricula = document.getElementById('matricula').value;
+            const errorMessage = document.getElementById('error-message');
+            const imageContainer = document.getElementById('image-container');
+            const foto = document.getElementById('foto');
+            const loading = document.getElementById('loading');
+            errorMessage.textContent = '';
+            imageContainer.style.display = 'none';
+            loading.style.display = 'none';
+
+            if (!matricula) {
+                errorMessage.textContent = 'Por favor, ingresa una matrícula.';
+                return;
+            }
+
+            const url = `https://apps-3.cobachbc.edu.mx/CompetenciasGenericas/Ajax/GetFotoCredencial?pMatricula=${matricula}`;
+
+            // Crear una imagen para verificar si existe
+            const img = new Image();
+            img.src = url;
+
+            img.onload = async function() {
+                // Si la imagen se carga correctamente, mostrarla
+                foto.src = url;
+                loading.style.display = 'block';
+
+                // Realizar reconocimiento facial
+                const reconocimientoExitoso = await realizarReconocimientoFacial(url);
+                loading.style.display = 'none';
+
+                if (reconocimientoExitoso) {
+                    imageContainer.style.display = 'block';
+                    // Mostrar la sección de login de rostro
+                    faceLoginSection.style.display = 'block';
+                } else {
+                    errorMessage.textContent = 'Reconocimiento facial fallido. Por favor, intenta nuevamente.';
+                }
+            };
+
+            img.onerror = function() {
+                // Si la imagen no se carga, mostrar un mensaje de error
+                errorMessage.textContent = 'Matrícula no válida. Por favor, verifica e intenta nuevamente.';
+            };
+        }
+
+        // Realizar reconocimiento facial
+        async function realizarReconocimientoFacial(imageUrl) {
+            try {
+                const response = await axios.post(
+                    `${faceApiEndpoint}/detect?returnFaceId=true&returnFaceLandmarks=false`,
+                    { url: imageUrl },
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Ocp-Apim-Subscription-Key': faceApiKey
+                        }
+                    }
+                );
+
+                // Verificar si se detectó un rostro
+                if (response.data && response.data.length > 0) {
+                    console.log('Rostro detectado:', response.data[0].faceId);
+                    return true;
+                } else {
+                    console.log('No se detectó ningún rostro.');
+                    return false;
+                }
+            } catch (error) {
+                console.error('Error en el reconocimiento facial:', error);
+                return false;
+            }
+        }
+
+        // Confirmar validación
+        function confirmar(esValido) {
+            if (esValido) {
+                const matricula = document.getElementById('matricula').value;
+                const link = `DOKO_PRUEBA.html?matricula=${matricula}`;
+                
+                // Enviar datos a Firebase
+                enviarADatabase(matricula, link);
+                
+                // Redirigir a la página DOKO con la matrícula como parámetro
+                window.location.href = link;
+            } else {
+                // Reiniciar la página si la validación falla
+                window.location.reload();
+            }
+        }
+
+        // Enviar datos a Firebase
+        function enviarADatabase(matricula, link) {
+            const data = {
+                matricula: matricula,
+                link: link
+            };
+
+            fetch('https://fotocredencial-30d54-default-rtdb.firebaseio.com/credenciales.json', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => {
+                if (response.ok) {
+                    console.log('Datos enviados a Firebase correctamente.');
+                } else {
+                    console.error('Error al enviar datos a Firebase:', response.statusText);
+                }
+            })
+            .catch(error => {
+                console.error('Error en la conexión a Firebase:', error);
+            });
+        }
+
+        // Iniciar
+        loadModels().then(startVideo);
+    </script>
+</body>
+</html>
