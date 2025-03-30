@@ -3,196 +3,250 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Verificación Facial</title>
+    <title>Verificación Facial - Versión Depurada</title>
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        .container {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-        .video-container, .credential-container {
-            flex: 1;
-            min-width: 300px;
-        }
-        video, canvas, #credentialImg {
-            width: 100%;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-        }
-        button {
-            background-color: #4CAF50;
-            color: white;
-            padding: 10px 15px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-            margin: 5px;
-        }
-        button:hover {
-            background-color: #45a049;
-        }
-        #result {
+        /* ... (mantén los mismos estilos) ... */
+        .debug {
             margin-top: 20px;
-            padding: 15px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border: 1px solid #ddd;
             border-radius: 4px;
-            font-weight: bold;
-            text-align: center;
-        }
-        .match {
-            background-color: #dff0d8;
-            color: #3c763d;
-        }
-        .no-match {
-            background-color: #f2dede;
-            color: #a94442;
+            font-family: monospace;
         }
     </style>
 </head>
 <body>
-    <h1>Verificación Facial</h1>
-    <p>Compara una foto de credencial con tu rostro en tiempo real</p>
-    
-    <div class="container">
-        <div class="video-container">
-            <h3>Rostro en vivo</h3>
-            <video id="video" width="400" height="300" autoplay muted></video>
-            <canvas id="canvas" width="400" height="300"></canvas>
-            <button id="captureBtn">Capturar Rostro</button>
-        </div>
-        
-        <div class="credential-container">
-            <h3>Foto de Credencial</h3>
-            <input type="file" id="credentialInput" accept="image/*">
-            <img id="credentialImg" src="" alt="Foto de credencial">
-        </div>
-    </div>
-    
-    <button id="compareBtn">Comparar Rostros</button>
-    <div id="result"></div>
+    <!-- ... (mantén el mismo HTML) ... -->
+    <div id="debugInfo" class="debug"></div>
     
     <script>
-        // Variables globales
-        let capturedDescriptor = null;
-        let credentialDescriptor = null;
+        // Variables globales con estado más claro
+        const state = {
+            modelsLoaded: false,
+            videoReady: false,
+            capturedDescriptor: null,
+            credentialDescriptor: null
+        };
         
-        // Cargar modelos de face-api.js
-        async function loadModels() {
-            await faceapi.nets.tinyFaceDetector.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
-            await faceapi.nets.faceLandmark68Net.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
-            await faceapi.nets.faceRecognitionNet.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
-            await faceapi.nets.faceExpressionNet.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
+        // Elementos del DOM
+        const elements = {
+            video: document.getElementById('video'),
+            canvas: document.getElementById('canvas'),
+            credentialImg: document.getElementById('credentialImg'),
+            result: document.getElementById('result'),
+            debugInfo: document.getElementById('debugInfo')
+        };
+        
+        // Función para actualizar información de depuración
+        function updateDebugInfo() {
+            elements.debugInfo.innerHTML = `
+                <strong>Estado del sistema:</strong><br>
+                - Modelos cargados: ${state.modelsLoaded ? '✅' : '❌'}<br>
+                - Video listo: ${state.videoReady ? '✅' : '❌'}<br>
+                - Rostro capturado: ${state.capturedDescriptor ? '✅' : '❌'}<br>
+                - Credencial procesada: ${state.credentialDescriptor ? '✅' : '❌'}
+            `;
         }
         
-        // Iniciar cámara
-        async function startVideo() {
-            const video = document.getElementById('video');
-            
+        // Cargar modelos con verificación mejorada
+        async function loadModels() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
-                video.srcObject = stream;
+                console.log("Cargando modelos...");
+                await faceapi.nets.tinyFaceDetector.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
+                await faceapi.nets.faceLandmark68Net.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
+                await faceapi.nets.faceRecognitionNet.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
+                
+                state.modelsLoaded = true;
+                console.log("Modelos cargados correctamente");
+                updateDebugInfo();
+                return true;
+            } catch (error) {
+                console.error("Error al cargar modelos:", error);
+                elements.result.textContent = "Error al cargar los modelos de reconocimiento facial";
+                elements.result.className = "no-match";
+                return false;
+            }
+        }
+        
+        // Iniciar cámara con mejor manejo de errores
+        async function startVideo() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: 640, 
+                        height: 480,
+                        facingMode: "user" 
+                    } 
+                });
+                elements.video.srcObject = stream;
+                
+                // Esperar a que el video esté realmente listo
+                await new Promise((resolve) => {
+                    elements.video.onloadedmetadata = () => {
+                        state.videoReady = true;
+                        updateDebugInfo();
+                        resolve();
+                    };
+                });
+                
+                return true;
             } catch (err) {
                 console.error("Error al acceder a la cámara:", err);
-                alert("No se pudo acceder a la cámara. Asegúrate de permitir el acceso.");
+                elements.result.textContent = "Error al acceder a la cámara: " + err.message;
+                elements.result.className = "no-match";
+                return false;
             }
         }
         
-        // Capturar rostro del video
+        // Capturar rostro con verificación mejorada
         async function captureFace() {
-            const video = document.getElementById('video');
-            const canvas = document.getElementById('canvas');
-            const displaySize = { width: video.width, height: video.height };
-            
-            faceapi.matchDimensions(canvas, displaySize);
-            
-            const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
-                .withFaceLandmarks()
-                .withFaceDescriptors();
-            
-            if (detections.length === 0) {
-                alert("No se detectó ningún rostro. Por favor, colócate frente a la cámara.");
+            if (!state.modelsLoaded || !state.videoReady) {
+                elements.result.textContent = "Los modelos o la cámara no están listos";
+                elements.result.className = "no-match";
                 return;
             }
             
-            // Dibujar detección en canvas
-            const resizedDetections = faceapi.resizeResults(detections, displaySize);
-            faceapi.draw.drawDetections(canvas, resizedDetections);
-            faceapi.draw.drawFaceLandmarks(canvas, resizedDetections);
-            
-            // Guardar descriptor facial
-            capturedDescriptor = detections[0].descriptor;
-            document.getElementById('result').textContent = "Rostro capturado correctamente";
-            document.getElementById('result').className = "match";
+            try {
+                console.log("Intentando detectar rostro...");
+                const detections = await faceapi.detectAllFaces(
+                    elements.video, 
+                    new faceapi.TinyFaceDetectorOptions({ inputSize: 320 })
+                ).withFaceLandmarks().withFaceDescriptors();
+                
+                console.log("Detecciones encontradas:", detections.length);
+                
+                if (detections.length === 0) {
+                    elements.result.textContent = "No se detectó ningún rostro. Asegúrate de estar bien iluminado y frente a la cámara.";
+                    elements.result.className = "no-match";
+                    return;
+                }
+                
+                // Dibujar detección
+                const displaySize = { width: elements.video.width, height: elements.video.height };
+                faceapi.matchDimensions(elements.canvas, displaySize);
+                const resizedDetections = faceapi.resizeResults(detections, displaySize);
+                faceapi.draw.drawDetections(elements.canvas, resizedDetections);
+                faceapi.draw.drawFaceLandmarks(elements.canvas, resizedDetections);
+                
+                // Almacenar descriptor
+                state.capturedDescriptor = detections[0].descriptor;
+                elements.result.textContent = "Rostro capturado correctamente!";
+                elements.result.className = "match";
+                updateDebugInfo();
+                
+                console.log("Descriptor facial capturado:", state.capturedDescriptor);
+            } catch (error) {
+                console.error("Error en captureFace:", error);
+                elements.result.textContent = "Error al capturar el rostro: " + error.message;
+                elements.result.className = "no-match";
+            }
         }
         
-        // Procesar imagen de credencial
+        // Procesar imagen de credencial mejorado
         async function processCredentialImage(file) {
-            const img = document.getElementById('credentialImg');
-            img.src = URL.createObjectURL(file);
-            
-            await new Promise((resolve) => {
-                img.onload = resolve;
-            });
-            
-            const detections = await faceapi.detectAllFaces(img, new faceapi.TinyFaceDetectorOptions())
-                .withFaceLandmarks()
-                .withFaceDescriptors();
-            
-            if (detections.length === 0) {
-                alert("No se detectó ningún rostro en la imagen de credencial.");
+            if (!state.modelsLoaded) {
+                elements.result.textContent = "Los modelos no están cargados todavía";
+                elements.result.className = "no-match";
                 return;
             }
             
-            credentialDescriptor = detections[0].descriptor;
-            document.getElementById('result').textContent = "Credencial procesada correctamente";
-            document.getElementById('result').className = "match";
+            try {
+                elements.credentialImg.src = URL.createObjectURL(file);
+                
+                // Esperar a que la imagen se cargue completamente
+                await new Promise((resolve, reject) => {
+                    elements.credentialImg.onload = resolve;
+                    elements.credentialImg.onerror = reject;
+                });
+                
+                console.log("Procesando imagen de credencial...");
+                const detections = await faceapi.detectAllFaces(
+                    elements.credentialImg, 
+                    new faceapi.TinyFaceDetectorOptions({ inputSize: 320 })
+                ).withFaceLandmarks().withFaceDescriptors();
+                
+                console.log("Detecciones en credencial:", detections.length);
+                
+                if (detections.length === 0) {
+                    elements.result.textContent = "No se encontró un rostro en la imagen de credencial. Usa una foto más clara.";
+                    elements.result.className = "no-match";
+                    return;
+                }
+                
+                state.credentialDescriptor = detections[0].descriptor;
+                elements.result.textContent = "Credencial procesada correctamente!";
+                elements.result.className = "match";
+                updateDebugInfo();
+                
+                console.log("Descriptor de credencial:", state.credentialDescriptor);
+            } catch (error) {
+                console.error("Error en processCredentialImage:", error);
+                elements.result.textContent = "Error al procesar la credencial: " + error.message;
+                elements.result.className = "no-match";
+            }
         }
         
-        // Comparar rostros
+        // Comparar rostros con más información
         async function compareFaces() {
-            const resultDiv = document.getElementById('result');
+            console.log("Comparando rostros... Estado actual:", state);
             
-            if (!capturedDescriptor || !credentialDescriptor) {
-                resultDiv.textContent = "Por favor, captura tu rostro y sube una imagen de credencial primero.";
-                resultDiv.className = "no-match";
+            if (!state.capturedDescriptor || !state.credentialDescriptor) {
+                let message = "Faltan: ";
+                if (!state.capturedDescriptor) message += "rostro capturado, ";
+                if (!state.credentialDescriptor) message += "imagen de credencial";
+                
+                elements.result.textContent = "Por favor completa ambos pasos: " + message;
+                elements.result.className = "no-match";
                 return;
             }
             
-            // Calcular distancia entre descriptores (0 = idénticos, 1 = completamente diferentes)
-            const distance = faceapi.euclideanDistance(capturedDescriptor, credentialDescriptor);
-            const threshold = 0.6; // Umbral de similitud (ajustable)
-            
-            if (distance < threshold) {
+            try {
+                const distance = faceapi.euclideanDistance(state.capturedDescriptor, state.credentialDescriptor);
+                const threshold = 0.6;
                 const similarity = Math.round((1 - distance) * 100);
-                resultDiv.textContent = `¡Coincidencia! Similitud del ${similarity}%`;
-                resultDiv.className = "match";
-            } else {
-                resultDiv.textContent = "No coincide. Por favor, intenta nuevamente.";
-                resultDiv.className = "no-match";
+                
+                console.log(`Distancia: ${distance.toFixed(4)}, Similitud: ${similarity}%`);
+                
+                if (distance < threshold) {
+                    elements.result.textContent = `¡Coincidencia! Similitud del ${similarity}%`;
+                    elements.result.className = "match";
+                } else {
+                    elements.result.textContent = `No coincide (Similitud: ${similarity}%). Por favor, intenta nuevamente.`;
+                    elements.result.className = "no-match";
+                }
+            } catch (error) {
+                console.error("Error en compareFaces:", error);
+                elements.result.textContent = "Error al comparar rostros: " + error.message;
+                elements.result.className = "no-match";
             }
         }
         
-        // Event listeners
+        // Inicialización mejorada
         document.addEventListener('DOMContentLoaded', async () => {
-            await loadModels();
-            await startVideo();
+            console.log("Inicializando aplicación...");
             
+            // Cargar modelos primero
+            const modelsLoaded = await loadModels();
+            if (!modelsLoaded) return;
+            
+            // Iniciar video
+            const videoStarted = await startVideo();
+            if (!videoStarted) return;
+            
+            // Configurar event listeners
             document.getElementById('captureBtn').addEventListener('click', captureFace);
             document.getElementById('compareBtn').addEventListener('click', compareFaces);
             
             document.getElementById('credentialInput').addEventListener('change', (e) => {
-                if (e.target.files.length > 0) {
+                if (e.target.files && e.target.files[0]) {
                     processCredentialImage(e.target.files[0]);
                 }
             });
+            
+            console.log("Aplicación inicializada correctamente");
+            updateDebugInfo();
         });
     </script>
 </body>
