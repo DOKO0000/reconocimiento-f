@@ -1,88 +1,199 @@
-import face_recognition
-import cv2
-import os
-from google.colab.patches import cv2_imshow #Importamos cv2_imshow
-
-# Cargar imágenes y codificar rostros
-known_face_encodings = []
-known_face_names = []
-
-# Obtener la ruta absoluta del directorio actual
-current_directory = os.path.dirname(os.path.abspath(__file__))
-
-# Función para cargar imágenes y codificar rostros
-def load_images_and_encode(directory):
-    for filename in os.listdir(directory):
-        if filename.endswith((".jpg", ".jpeg", ".png")):
-            image_path = os.path.join(directory, filename)
-            image = face_recognition.load_image_file(image_path)
-            face_encoding = face_recognition.face_encodings(image)
-            if len(face_encoding) > 0:
-                known_face_encodings.append(face_encoding[0])
-                known_face_names.append(os.path.splitext(filename)[0])
-            else:
-                print(f"Advertencia: No se detectó ningún rostro en {filename}")
-
-# Cargar imágenes desde el directorio "imagenes"
-imagenes_directory = os.path.join(current_directory, "imagenes")
-load_images_and_encode(imagenes_directory)
-
-# Inicializar la cámara
-video_capture = cv2.VideoCapture(0)
-
-if not video_capture.isOpened():
-    print("Error: No se pudo abrir la cámara.")
-    exit()
-
-# Bucle principal
-while True:
-    ret, frame = video_capture.read()
-
-    if not ret:
-        print("Error: No se pudo obtener el frame.")
-        break
-
-    # Redimensionar el frame para mejorar el rendimiento
-    small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
-    rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
-
-    # Encontrar rostros y codificarlos
-    face_locations = face_recognition.face_locations(rgb_small_frame)
-    face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
-
-    face_names = []
-    for face_encoding in face_encodings:
-        # Comparar rostros
-        matches = face_recognition.compare_faces(known_face_encodings, face_encoding)
-        name = "Desconocido"
-
-        # Encontrar la mejor coincidencia
-        if True in matches:
-            first_match_index = matches.index(True)
-            name = known_face_names[first_match_index]
-
-        face_names.append(name)
-
-    # Mostrar resultados
-    for (top, right, bottom, left), name in zip(face_locations, face_names):
-        top *= 4
-        right *= 4
-        bottom *= 4
-        left *= 4
-
-        cv2.rectangle(frame, (left, top), (right, bottom), (0, 0, 255), 2)
-        cv2.putText(frame, name, (left + 6, bottom - 6), cv2.FONT_HERSHEY_DUPLEX, 0.8, (255, 255, 255), 1)
-
-    # Mostrar el frame resultante
-    cv2_imshow(frame) # Utilizamos cv2_imshow en vez de cv2.imshow
-
-    # Salir del bucle si se presiona 'q'
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
-
-# Liberar recursos
-video_capture.release()
-cv2.destroyAllWindows()
-# Liberar recursos
-video_capture.release()
-cv2.destroyAllWindows()
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verificación Facial</title>
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .video-container, .credential-container {
+            flex: 1;
+            min-width: 300px;
+        }
+        video, canvas, #credentialImg {
+            width: 100%;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            font-weight: bold;
+            text-align: center;
+        }
+        .match {
+            background-color: #dff0d8;
+            color: #3c763d;
+        }
+        .no-match {
+            background-color: #f2dede;
+            color: #a94442;
+        }
+    </style>
+</head>
+<body>
+    <h1>Verificación Facial</h1>
+    <p>Compara una foto de credencial con tu rostro en tiempo real</p>
+    
+    <div class="container">
+        <div class="video-container">
+            <h3>Rostro en vivo</h3>
+            <video id="video" width="400" height="300" autoplay muted></video>
+            <canvas id="canvas" width="400" height="300"></canvas>
+            <button id="captureBtn">Capturar Rostro</button>
+        </div>
+        
+        <div class="credential-container">
+            <h3>Foto de Credencial</h3>
+            <input type="file" id="credentialInput" accept="image/*">
+            <img id="credentialImg" src="" alt="Foto de credencial">
+        </div>
+    </div>
+    
+    <button id="compareBtn">Comparar Rostros</button>
+    <div id="result"></div>
+    
+    <script>
+        // Variables globales
+        let capturedDescriptor = null;
+        let credentialDescriptor = null;
+        
+        // Cargar modelos de face-api.js
+        async function loadModels() {
+            await faceapi.nets.tinyFaceDetector.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
+            await faceapi.nets.faceLandmark68Net.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
+            await faceapi.nets.faceRecognitionNet.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
+            await faceapi.nets.faceExpressionNet.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
+        }
+        
+        // Iniciar cámara
+        async function startVideo() {
+            const video = document.getElementById('video');
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
+                video.srcObject = stream;
+            } catch (err) {
+                console.error("Error al acceder a la cámara:", err);
+                alert("No se pudo acceder a la cámara. Asegúrate de permitir el acceso.");
+            }
+        }
+        
+        // Capturar rostro del video
+        async function captureFace() {
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const displaySize = { width: video.width, height: video.height };
+            
+            faceapi.matchDimensions(canvas, displaySize);
+            
+            const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
+                .withFaceLandmarks()
+                .withFaceDescriptors();
+            
+            if (detections.length === 0) {
+                alert("No se detectó ningún rostro. Por favor, colócate frente a la cámara.");
+                return;
+            }
+            
+            // Dibujar detección en canvas
+            const resizedDetections = faceapi.resizeResults(detections, displaySize);
+            faceapi.draw.drawDetections(canvas, resizedDetections);
+            faceapi.draw.drawFaceLandmarks(canvas, resizedDetections);
+            
+            // Guardar descriptor facial
+            capturedDescriptor = detections[0].descriptor;
+            document.getElementById('result').textContent = "Rostro capturado correctamente";
+            document.getElementById('result').className = "match";
+        }
+        
+        // Procesar imagen de credencial
+        async function processCredentialImage(file) {
+            const img = document.getElementById('credentialImg');
+            img.src = URL.createObjectURL(file);
+            
+            await new Promise((resolve) => {
+                img.onload = resolve;
+            });
+            
+            const detections = await faceapi.detectAllFaces(img, new faceapi.TinyFaceDetectorOptions())
+                .withFaceLandmarks()
+                .withFaceDescriptors();
+            
+            if (detections.length === 0) {
+                alert("No se detectó ningún rostro en la imagen de credencial.");
+                return;
+            }
+            
+            credentialDescriptor = detections[0].descriptor;
+            document.getElementById('result').textContent = "Credencial procesada correctamente";
+            document.getElementById('result').className = "match";
+        }
+        
+        // Comparar rostros
+        async function compareFaces() {
+            const resultDiv = document.getElementById('result');
+            
+            if (!capturedDescriptor || !credentialDescriptor) {
+                resultDiv.textContent = "Por favor, captura tu rostro y sube una imagen de credencial primero.";
+                resultDiv.className = "no-match";
+                return;
+            }
+            
+            // Calcular distancia entre descriptores (0 = idénticos, 1 = completamente diferentes)
+            const distance = faceapi.euclideanDistance(capturedDescriptor, credentialDescriptor);
+            const threshold = 0.6; // Umbral de similitud (ajustable)
+            
+            if (distance < threshold) {
+                const similarity = Math.round((1 - distance) * 100);
+                resultDiv.textContent = `¡Coincidencia! Similitud del ${similarity}%`;
+                resultDiv.className = "match";
+            } else {
+                resultDiv.textContent = "No coincide. Por favor, intenta nuevamente.";
+                resultDiv.className = "no-match";
+            }
+        }
+        
+        // Event listeners
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadModels();
+            await startVideo();
+            
+            document.getElementById('captureBtn').addEventListener('click', captureFace);
+            document.getElementById('compareBtn').addEventListener('click', compareFaces);
+            
+            document.getElementById('credentialInput').addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    processCredentialImage(e.target.files[0]);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
