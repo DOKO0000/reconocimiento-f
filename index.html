@@ -56,10 +56,6 @@
         .confirmation button {
             margin: 5px;
         }
-        .loading {
-            display: none;
-            margin-top: 10px;
-        }
         #face-login {
             display: none;
             margin-top: 20px;
@@ -83,10 +79,11 @@
 <body>
     <div class="container">
         <h1>Verificación de Matrícula</h1>
+        <input type="text" id="nombre" placeholder="Ingresa tu nombre">
+        <input type="text" id="apellido" placeholder="Ingresa tu apellido">
         <input type="text" id="matricula" placeholder="Ingresa tu matrícula">
         <button onclick="verificarMatricula()">Verificar</button>
-        <p class="error, id="error-message"></p>
-        <div class="loading" id="loading">Cargando...</div>
+        <p class="error" id="error-message"></p>
     </div>
 
     <div class="image-container" id="image-container" style="display: none;">
@@ -109,8 +106,6 @@
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
     <script>
-        const faceApiKey = 'TU_CLAVE_DE_FACE_API'; // Reemplaza con tu clave de Face API
-        const faceApiEndpoint = 'TU_ENDPOINT_DE_FACE_API'; // Reemplaza con tu endpoint de Face API
         const video = document.getElementById('video');
         const captureFaceButton = document.getElementById('capture-face');
         const canvas = document.getElementById('canvas');
@@ -192,17 +187,19 @@
         });
 
         // Verificar matrícula
-        async function verificarMatricula() {
+        function verificarMatricula() {
+            const nombre = document.getElementById('nombre').value;
+            const apellido = document.getElementById('apellido').value;
             const matricula = document.getElementById('matricula').value;
             const errorMessage = document.getElementById('error-message');
             const imageContainer = document.getElementById('image-container');
-            const loading = document.getElementById('loading');
+            const foto = document.getElementById('foto');
             errorMessage.textContent = '';
             imageContainer.style.display = 'none';
-            loading.style.display = 'none';
 
-            if (!matricula) {
-                errorMessage.textContent = 'Por favor, ingresa una matrícula.';
+            // Validar que todos los campos estén llenos
+            if (!nombre || !apellido || !matricula) {
+                errorMessage.textContent = 'Por favor, completa todos los campos.';
                 return;
             }
 
@@ -212,20 +209,10 @@
             const img = new Image();
             img.src = url;
 
-            img.onload = async function() {
+            img.onload = function() {
                 // Si la imagen se carga correctamente, mostrarla
                 foto.src = url;
-                loading.style.display = 'block';
-
-                // Realizar reconocimiento facial
-                const reconocimientoExitoso = await realizarReconocimientoFacial(url);
-                loading.style.display = 'none';
-
-                if (reconocimientoExitoso) {
-                    imageContainer.style.display = 'block';
-                } else {
-                    errorMessage.textContent = 'Reconocimiento facial fallido. Por favor, intenta nuevamente.';
-                }
+                imageContainer.style.display = 'block';
             };
 
             img.onerror = function() {
@@ -234,53 +221,9 @@
             };
         }
 
-        // Realizar reconocimiento facial
-        async function realizarReconocimientoFacial(imageUrl) {
-            try {
-                const response = await axios.post(
-                    `${faceApiEndpoint}/detect?returnFaceId=true&returnFaceLandmarks=false`,
-                    { url: imageUrl },
-                    {
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Ocp-Apim-Subscription-Key': faceApiKey
-                        }
-                    }
-                );
-
-                // Verificar si se detectó un rostro
-                if (response.data && response.data.length > 0) {
-                    console.log('Rostro detectado:', response.data[0].faceId);
-                    return true;
-                } else {
-                    console.log('No se detectó ningún rostro.');
-                    return false;
-                }
-            } catch (error) {
-                console.error('Error en el reconocimiento facial:', error);
-                return false;
-            }
-        }
-
         // Confirmar validación
         async function confirmar(esValido) {
             if (esValido) {
                 // Obtener el descriptor facial de la imagen de la matrícula
                 faceDescriptorFromImage = await getFaceDescriptorFromImage(foto);
-                if (faceDescriptorFromImage) {
-                    // Mostrar la sección de login de rostro
-                    faceLoginSection.style.display = 'block';
-                } else {
-                    alert("No se pudo detectar un rostro en la imagen. Intenta nuevamente.");
-                }
-            } else {
-                // Reiniciar la página si la validación falla
-                window.location.reload();
-            }
-        }
-
-        // Iniciar
-        loadModels().then(startVideo);
-    </script>
-</body>
-</html>
+                if (faceDescriptorFromImage)
