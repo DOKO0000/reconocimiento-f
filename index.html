@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Verificación Facial</title>
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <!-- Agregar Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -80,9 +83,19 @@
     <div id="result"></div>
     
     <script>
+        // Configuración de Firebase
+        const firebaseConfig = {
+            databaseURL: "https://fotocredencial-30d54-default-rtdb.firebaseio.com/"
+        };
+        
+        // Inicializar Firebase
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        
         // Variables globales
         let capturedDescriptor = null;
         let credentialDescriptor = null;
+        let capturedImageData = null;
         
         // Cargar modelos de face-api.js
         async function loadModels() {
@@ -129,6 +142,15 @@
             
             // Guardar descriptor facial
             capturedDescriptor = detections[0].descriptor;
+            
+            // Capturar imagen del video como base64
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = video.videoWidth;
+            tempCanvas.height = video.videoHeight;
+            const ctx = tempCanvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
+            capturedImageData = tempCanvas.toDataURL('image/jpeg');
+            
             document.getElementById('result').textContent = "Rostro capturado correctamente";
             document.getElementById('result').className = "match";
         }
@@ -156,6 +178,30 @@
             document.getElementById('result').className = "match";
         }
         
+        // Función para enviar foto a Firebase
+        async function sendPhotoToFirebase() {
+            if (!capturedImageData) {
+                console.error("No hay imagen capturada para enviar");
+                return;
+            }
+            
+            try {
+                // Crear una referencia a la base de datos
+                const photosRef = database.ref('fotos');
+                
+                // Crear un nuevo registro con la imagen y timestamp
+                const newPhotoRef = photosRef.push();
+                await newPhotoRef.set({
+                    imageData: capturedImageData,
+                    timestamp: firebase.database.ServerValue.TIMESTAMP
+                });
+                
+                console.log("Foto enviada correctamente a Firebase");
+            } catch (error) {
+                console.error("Error al enviar foto a Firebase:", error);
+            }
+        }
+        
         // Comparar rostros
         async function compareFaces() {
             const resultDiv = document.getElementById('result');
@@ -174,6 +220,9 @@
                 const similarity = Math.round((1 - distance) * 100);
                 resultDiv.textContent = `¡Coincidencia! Similitud del ${similarity}%`;
                 resultDiv.className = "match";
+                
+                // Enviar foto a Firebase cuando hay coincidencia
+                await sendPhotoToFirebase();
             } else {
                 resultDiv.textContent = "No coincide. Por favor, intenta nuevamente.";
                 resultDiv.className = "no-match";
